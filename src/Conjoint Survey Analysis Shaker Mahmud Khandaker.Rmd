@@ -1,0 +1,646 @@
+---
+title: "Laboratory of Consumer and Business Analytics"
+subtitle: "Choice Based Conjoint Survey Analysis"
+author: "Shaker Mahmud Khandaker"
+date: "21/12/2022"
+output: 
+  pdf_document: 
+    toc: yes
+    fig_width: 7
+    fig_height: 6
+    fig_caption: yes
+    fig_crop: no
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r Loading Libraries, include=FALSE}
+library(mlogit)
+library(dplyr)
+library(ggplot2)
+library(MASS)
+library(lattice)
+library(parallel)
+```
+
+```{r Loading Dataset, include=FALSE}
+cameras = read.csv("../Dataset/camera_survey_dataset.csv", sep=",")
+```
+
+```{=html}
+<!-- 
+Let's convert the quantitative variables to qualitative. 
+
+The possible values for each variables are as follows:
+
+shutter_speed           megapixels    max_resolution    screensize    weight    price
+"30 - 1/8000 sec"       12            "4240 x 2832"     "2.4inch"     "699g"    999
+"60 - 1/12000 sec"      26            "6240 x 4160"     "2.6inch"     "755g"    1499
+"90 - 1/8000 sec"       33            "7008 x 4672"     "3inch"       "904g"    1799
+"900 - 1/4000 sec"      60            "9504 x 6336"     "3.2inch"     "1227g"   2099
+
+The reference level for each variables are as follows:
+
+shutter_speed           megapixels    max_resolution    screensize    weight    price
+"30 - 1/8000 sec"       12            "4240 x 2832"     "2.4inch"     "699g"    999
+
+This will guide us to see how preferences change overtime for alternative choices.
+-->
+```
+```{r Preparing data, include=FALSE}
+cameras$alternative         <- as.factor(cameras$alternative)
+cameras$shutter_speed         <- factor(cameras$shutter_speed, levels=c("30 - 1/8000 sec", "60 - 1/12000 sec", "90 - 1/8000 sec", "900 - 1/4000 sec"))
+cameras$megapixels      <- as.factor(cameras$megapixels)
+cameras$max_resolution   <- factor(cameras$max_resolution, levels=c("4240 x 2832", "6240 x 4160", "7008 x 4672", "9504 x 6336"))
+cameras$screensize  <- factor(cameras$screensize, levels=c("2.4inch", "2.6inch", "3inch", "3.2inch"))
+cameras$weight      <- factor(cameras$weight, levels=c( "699g", "755g", "904g", "1227g" ))
+cameras$price       <- as.factor(cameras$price)
+```
+
+## Introduction
+
+The objective of this project is to gain an understanding of conjoint
+analysis and its ability to provide insights into consumer preferences.
+By analyzing the preferences of an individual when purchasing a digital
+camera, we can gain a better insight into the decision-making process
+and the factors that affect a customer's choice. Through this analysis,
+we can better understand the relationships between customer preferences
+and product attributes, allowing us to better meet customer needs and
+expectations. Ultimately, this analysis can help businesses gain a
+competitive edge by providing them with valuable consumer insights.
+
+## Dataset
+
+Our dataset consists of responses from 300 participants regarding their
+preferences for digital cameras. Each respondent was presented with 25
+questions each with 4 different camera options and asked to choose one
+from each question based on 6 different attributes: shutter speed,
+megapixels, max resolution, screen size, weight and price. This data was
+then compiled to create a comprehensive dataset of participant
+preferences for digital cameras.
+
+```{r Data description, echo=FALSE}
+summary(cameras)
+```
+
+Let's see if each of the attributes are balanced.
+
+```{r check balance, echo=FALSE}
+balance_checker_df <- sapply(cameras, table)
+print(balance_checker_df$shutter_speed)
+print(balance_checker_df$megapixels)
+print(balance_checker_df$max_resolution)
+print(balance_checker_df$screensize)
+print(balance_checker_df$weight)
+print(balance_checker_df$price)
+```
+
+This sample shows a balanced dataset with evenly distributed frequencies
+across each level of the attributes. There is no over- or
+under-representation of any attribute level, ensuring that the data is
+representative and reliable for our analysis.
+
+We can investigate the association of different attributes with the
+choice made by the respondent using the xtabs() function. This function
+provides a joint distribution between two variables. By analyzing this
+joint distribution, we can gain insights into the factors that influence
+the respondent's choice.
+
+```{r xtabs - distribution among variables and user_choice}
+xtabs(user_choice ~ price, data=cameras)
+xtabs(user_choice ~ shutter_speed, data=cameras)
+xtabs(user_choice ~ megapixels, data=cameras)
+xtabs(user_choice ~ max_resolution, data=cameras)
+xtabs(user_choice ~ screensize, data=cameras)
+xtabs(user_choice ~ weight, data=cameras)
+```
+
+From the joint distribution obtained, we can see that the customers
+prefer cameras with higher screen resolution, megapixels ranging from 26
+to 60, a bigger screen size, light weight and price preference around
+€1499.
+
+## Models
+
+### Multinomial Logit Model(MNL)
+
+The dependent variable is a qualitative multinomial variable with 4
+levels. We can use Multinomial Logit model (MNL) to fit response data.
+MNL model is a powerful tool for analyzing and predicting a qualitative
+multinomial response variable. It allows us to estimate the probability
+of each of the response categories given a set of predictor variables.
+By fitting the model, we can measure the association between the
+predictor variables and the response variable, allowing us to identify
+factors that significantly affect the probability of each of the
+response categories. This makes MNL an ideal tool for modeling complex
+decision-making processes in which multiple factors are taken into
+account.
+
+```{r dfidx, include=FALSE}
+cameras.mlogit <- dfidx(cameras, idx = list(c("question", "response_id"), 
+                                            "alternative"), drop.index=F, levels=c(1,2,3,4))
+```
+
+For our first model, we will consider the intercept parameters.
+
+```{r MNL}
+lm1 <- mlogit(user_choice ~ price + shutter_speed + megapixels 
+              + max_resolution + screensize + weight , data = cameras.mlogit)
+summary(lm1)
+```
+
+The summary above provides the results of an mlogit analysis of
+user_choice in relation to price, shutter_speed, megapixels,
+max_resolution, screensize and weight from the cameras.mlogit dataset.
+The coefficients for each of the independent variables are provided,
+along with the corresponding standard errors, z-values and p-values. We
+can see that the estimated intercepts are very small and not
+significantly different from zero. So, in order to gain in parsimony and
+precision, we are in the position to not include them. The p-values for
+each of the variables indicate that megapixels60 and weight1227g are the
+only variables with statistically significant relationships with user
+choice. This means that, compared to other megapixels and weight levels,
+users are more likely to choose a camera with megapixels60 and
+weight1227g.
+
+### Multinomial Logit Model(MNL) Without Intercept
+
+In order to formally test the significance of the intercept, we fit
+another model without the intercept parameters and perform a likelihood
+ratio test comparing both models.
+
+```{r MNL Without Intercept}
+lm2 <- mlogit(user_choice ~ price + shutter_speed + megapixels 
+              + max_resolution + screensize + weight | -1, data = cameras.mlogit)
+summary(lm2)
+```
+
+### Choosing models part 1
+
+```{r lrtest(lm1, lm2), echo=FALSE}
+lrtest(lm1, lm2)
+```
+
+The above summary shows the results of a likelihood ratio test comparing
+two models. The test results show that there is no significant
+differences between the two models, with a p-value of 0.7063. This
+indicates that the intercept is not necessary to explain the variability
+in the response variable.
+
+### Profiles and preference share
+
+Top 10 Popular profiles: Using a frequency table, let's take a look at
+the top 10 popular profiles for cameras.
+
+```{r Frequency table, include=FALSE}
+cameras.chosen <- filter(cameras,cameras$user_choice == "1")
+cameras.indexed <- cameras.chosen
+cameras.indexed$id <- paste(as.character(cameras.indexed$price),"-",
+                            as.character(cameras.indexed$shutter_speed),"-",
+                            as.character(cameras.indexed$megapixels),"-",
+                            as.character(cameras.indexed$max_resolution),"-",
+                            as.character(cameras.indexed$screensize),"-",
+                            as.character(cameras.indexed$weight), sep = "")
+
+freqtable <- table(cameras.indexed$id)
+df <- as.data.frame.table(freqtable)
+df <- df %>% as.data.frame() %>% top_n(10, Freq) %>% rename(Profiles = Var1)
+df <- df[1:10,]
+df <- transform(df, Profiles=reorder(Profiles, -Freq)) 
+theme_set(theme_classic())
+```
+
+```{r Profiles Graph, echo=FALSE}
+g <- ggplot(df, aes(Profiles, Freq))
+g + geom_bar(stat="identity", width = 0.7, fill="lightblue") + 
+  labs(title="Profiles", 
+       caption="Frequency") +
+  theme(axis.text.x = element_text(angle=65, vjust=0.6))
+
+```
+
+The graph above shows the top 10 popular profiles in the dataset where
+most of them are in the price range €999 to €1799 with higher resolution
+of 7008X4672.
+
+```{r Function selecting profiles, include=FALSE}
+attributes <- list(price=names(table(cameras.mlogit$price)),
+                   shutter_speed=names(table(cameras.mlogit$shutter_speed)),
+                   megapixels=names(table(cameras.mlogit$megapixels)),
+                   max_resolution=names(table(cameras.mlogit$max_resolution)),
+                   screensize=names(table(cameras.mlogit$screensize)),
+                   weight=names(table(cameras.mlogit$weight)))
+allDesign <- expand.grid(attributes) 
+
+ProductSelection <- function(price,shutter_speed,megapixels,max_resolution,screensize,weight){
+  return(filter(allDesign, price == {{price}}, shutter_speed == {{shutter_speed}}, megapixels == {{ megapixels }}, max_resolution == {{ max_resolution }}, screensize == {{ screensize }}, weight == {{ weight }}))
+}
+```
+
+### Creating Profiles
+
+Let's create profiles based on 3 market levels: entry, midrange and
+flagship. <!-- 
+shutter_speed           megapixels    max_resolution    screensize    weight    price
+"30 - 1/8000 sec"       12            "4240 x 2832"     "2.4inch"     "699g"    999
+"60 - 1/12000 sec"      26            "6240 x 4160"     "2.6inch"     "755g"    1499
+"90 - 1/8000 sec"       33            "7008 x 4672"     "3inch"       "904g"    1799
+"900 - 1/4000 sec"      60            "9504 x 6336"     "3.2inch"     "1227g"   2099
+-->
+
+```{r setting profiles, include=FALSE}
+#Entry level
+entry1 <- ProductSelection(price = 999, shutter_speed = "900 - 1/4000 sec", megapixels = 12, max_resolution = "4240 x 2832", screensize = "2.4inch", weight = "699g")
+entry2 <- ProductSelection(price = 999, shutter_speed = "900 - 1/4000 sec", megapixels = 12, max_resolution = "6240 x 4160", screensize = "2.4inch", weight = "755g")
+entry3 <- ProductSelection(price = 999, shutter_speed = "90 - 1/8000 sec", megapixels = 12, max_resolution = "4240 x 2832", screensize = "2.6inch", weight = "904g")
+entry4 <- ProductSelection(price = 1499, shutter_speed = "30 - 1/8000 sec", megapixels = 26, max_resolution = "6240 x 4160", screensize = "2.4inch", weight = "755g")
+
+#Mid range level
+mid1 <- ProductSelection(price = 1499, shutter_speed = "90 - 1/8000 sec", megapixels = 26, max_resolution = "6240 x 4160", screensize = "2.4inch", weight = "699g")
+mid2 <- ProductSelection(price = 1799, shutter_speed = "60 - 1/12000 sec", megapixels = 33, max_resolution = "9504 x 6336", screensize = "2.6inch", weight = "755g")
+mid3 <- ProductSelection(price = 1499, shutter_speed = "90 - 1/8000 sec", megapixels = 12, max_resolution = "7008 x 4672", screensize = "3inch", weight = "904g")
+
+#Flagship
+high1 <- ProductSelection(price = 2099, shutter_speed = "60 - 1/12000 sec", megapixels = 33, max_resolution = "7008 x 4672", screensize = "3inch", weight = "755g")
+high2 <- ProductSelection(price = 1799, shutter_speed = "30 - 1/8000 sec", megapixels = 33, max_resolution = "9504 x 6336", screensize ="3.2inch", weight = "1227g")
+high3 <- ProductSelection(price = 2099, shutter_speed = "30 - 1/8000 sec", megapixels = 60, max_resolution = "9504 x 6336", screensize = "3.2inch", weight = "904g")
+
+profiles <- rbind(mid2, entry1, entry2,entry3, entry4, mid1, mid3, high1, high2, high3)
+```
+
+```{r profiles output, echo=FALSE}
+print(profiles)
+```
+
+Let's predict the preference shares for the profiles with the estimated
+model.
+
+```{r Predict Function - Uncorrelated fixed effects, include=FALSE}
+# Simulate preference shares using the "predict.mnl" function 
+# Define the function
+predict.mnl <- function(model, data) {
+  # Function for predicting preference shares from a MNL model 
+  # model: mlogit object returned by mlogit()
+  # data: a data frame containing the set of designs for which you want to 
+  #       predict shares.  Same format at the data used to estimate model. 
+  data.model <- model.matrix(update(model$formula, 0 ~ .), data = data)[,-1]
+  logitUtility <- data.model%*%model$coef
+  share <- exp(logitUtility)/sum(exp(logitUtility))
+  cbind(share, data)
+}
+```
+
+## Preference share prediction (MNL)
+
+```{r Preference share, echo=FALSE}
+predict.mnl(lm2, profiles)
+```
+
+The table shows the percentages of preference for each of the
+alternatives. The highest percentage is for the 6th profile at 18.95%,
+and our planned product is the first profile which has 9.67%. This data
+is based on the specific set of potential competitors, and could change
+for different profiles. We can study how changes to the attributes of
+our planned product would affect the preference by creating a preference
+share-sensitivity chart. This gives an intuitive understanding of how
+design changes can influence the preference share.
+
+```{r}
+source("BootCI.predict.mnl.R")
+```
+
+This function is used to calculate Bootstrap Confidence Intervals by
+re-estimating models and computing preference share multiple times. It
+takes in a model, as well as a chosen set of profiles, with the first
+one being the profile being assessed. It then proceeds to calculate the
+preference share of the profile in comparison to other products in the
+market. It returns the preference shares and the 95% CI that correspond
+to each profile, with 500 simulations by default.
+
+### Preference share with bootstrap - Fixed model
+
+```{r predict bootstrap - Fixed model, echo=FALSE}
+BootCI.predict.mnl(lm2,profiles)
+```
+
+We perform sensitivity analysis to study the attributes; how preference
+share is affected by the variations in the attributes.
+
+```{r Sensitivity Function, include=FALSE}
+sensitivity.mnl <- function(model, attrib, base.data, competitor.data) {
+  # Function for creating data for a preference share-sensitivity chart
+  # model: mlogit object returned by mlogit() function
+  # attrib: list of vectors with attribute levels to be used in sensitivity
+  # base.data: data frame containing baseline design of target product
+  # competitor.data: data frame contining design of competitive set
+  data <- rbind(base.data, competitor.data)
+  base.share <- predict.mnl(model, data)[1,1]
+  share <- NULL
+  for (a in seq_along(attrib)) {
+    for (i in attrib[[a]]) {
+      data[1,] <- base.data
+      data[1,a] <- i
+      share <- c(share, predict.mnl(model, data)[1,1])
+    }
+  }
+  data.frame(level=unlist(attrib), share=share, increase=share-base.share)
+}
+
+base.data <- profiles[1,]
+competitor.data <- profiles[-1,]
+tradeoff <- sensitivity.mnl(lm2, attributes, base.data, competitor.data)
+```
+
+To assess the preference shares in logit scale, we use sensitivity
+analysis to analyze how changes in each attribute affects preference
+shares. The analysis requires a model, attributes, a reference profile,
+and a competitive set of profiles as inputs.
+
+### Trade-off attributes graph - MNL
+
+```{r Trade-off attributes graph - MNL, echo=FALSE}
+tradeoff <- sensitivity.mnl(lm2, attributes, base.data, competitor.data)
+print(tradeoff)
+barplot(tradeoff$increase, horiz=FALSE, names.arg=tradeoff$level,
+        ylab="Change in Share for the Planned Product Design", 
+        ylim=c(-0.1,0.4))
+grid(nx=NA, ny=NULL)
+```
+
+The graph above is the sensitivity chart with following as reference
+profile configurations:
+
+price = €1799, shutter_speed = 60 - 1/12000 sec megapixels = 33
+max_resolution = 9504 x 6336 screensize = 2.6inch weight = 755g
+
+We can see that, decreasing the maximum resolution from 9504 x 6336 to
+7008 x 4672 increases profile share by 2.76%. Also, descreasing the
+megapixels from 33 to 26 increases by 3.81%. Finally, changing the
+shutter speed to 90 - 1/8000 sec increases the profile share by 2.49%.
+
+Any other changes decreases the percentage.
+
+## User homogeneity check
+
+Now we are going to fit mixed MNL model, where the coefficients vary
+randomly over respondents in the population, rather than being fixed. To
+estimate a multinomial logit model with random coefficients using
+"mlogit", we define a vector indicating which coefficients should vary
+across customers.
+
+The mlogit() requires a character vector the same length as the
+coefficient vector with a letter code indicating the distribution that
+random coefficients should follow across the respondents: "n" for
+normal, "l" for log normal, "t" for truncated normal, and "u" for
+uniform. For this analysis, we assume that all the coefficients are
+normally distributed across the population and call our vector
+"lm2.rpar".
+
+```{r lm2.rpar, include=FALSE}
+lm2.rpar <- rep("n", length=length(lm2$coef))
+names(lm2.rpar) <- names(lm2$coef)
+lm2.rpar
+```
+
+### Mixed MNL (with Random Effect)
+
+In order to verify that, we are going to create a model that takes in
+consideration random effects (variation according to respondents).
+
+```{r Mixed MNL (with Random Effect)}
+#shutter_speed           megapixels    max_resolution    screensize    weight    price
+lm2.mixed <- mlogit(user_choice ~ price + shutter_speed + megapixels + max_resolution 
+                    + screensize + weight  | -1, data = cameras.mlogit, 
+                   panel=TRUE, rpar = lm2.rpar, correlation = FALSE)
+summary(lm2.mixed)
+# summary(lm2.mixed)$CoefTable[summary(lm2.mixed)$CoefTable[,4]<=0.05, ]
+```
+
+In mixed MNL models, we calculate two parameters for each attribute: the
+mean and standard deviation of the distribution of respondent variables.
+This enables us to see the estimated mean and standard deviation for
+each attribute. By analyzing the standard deviation, we can measure the
+level of variability in customer preferences. If the absolute standard
+deviation is greater than the absolute mean, it indicates that there is
+a significant level of heterogeneity in customer preferences. The
+difference between the absolute values of the mean and standard
+deviation can be used to determine the strength of the heterogeneity.
+
+In the random coefficients table, we get the summary of distribution. If
+the sign remains the same across all the quantiles, then it indicates
+that we have a substantial homogeneity in the preferences. The
+parameters "price1499", "price2099", "shutter_speed60 - 1/12000 sec",
+"shutter_speed90 - 1/8000 sec", "screensize3inch", "screensize3.2inch",
+"weight755g" and "weight904g" has a different signs across the quantiles
+implying substantial heterogeneity. The other parameters are homogeneous
+across the quantiles indicating the customer preference in those
+attributes are homogeneous.
+
+### Analysing heterogeneity
+
+By comparing the sign of the quantiles we can identify that "price1499",
+"price2099", "shutter_speed60 - 1/12000 sec", "shutter_speed90 - 1/8000
+sec", "screensize3inch", "screensize3.2inch", "weight755g" and
+"weight904g" have different signs, which could imply heterogeneity in
+the customer preferences.
+
+```{r Heterogeneity, echo=FALSE}
+# "price1499"
+# "price2099"
+# "shutter_speed60 - 1/12000 sec"
+# "shutter_speed90 - 1/8000 sec"
+# "screensize3inch"
+# "screensize3.2inch"
+# "weight755g"
+# "weight904g"
+price1499.distr <- rpar(lm2.mixed, "price1499")
+summary(price1499.distr)
+
+price2099.distr <- rpar(lm2.mixed, "price2099")
+summary(price2099.distr)
+
+ss60.distr <- rpar(lm2.mixed, "shutter_speed60 - 1/12000 sec")
+summary(ss60.distr)
+
+ss90.distr <- rpar(lm2.mixed, "shutter_speed90 - 1/8000 sec")
+summary(ss90.distr)
+
+screensize3inch.distr <- rpar(lm2.mixed, "screensize3inch")
+summary(screensize3inch.distr)
+
+screensize3.2inch.distr <- rpar(lm2.mixed, "screensize3.2inch")
+summary(screensize3.2inch.distr)
+
+weight755g.distr <- rpar(lm2.mixed, "weight755g")
+summary(weight755g.distr)
+
+weight904g.distr <- rpar(lm2.mixed, "weight904g")
+summary(weight904g.distr)
+
+```
+
+```{r}
+par(mfrow=c(4,2), mar=c(1,1,1,1))
+plot(price1499.distr)
+plot(price2099.distr)
+plot(ss60.distr)
+plot(ss90.distr)
+plot(screensize3inch.distr)
+plot(screensize3.2inch.distr)
+plot(weight755g.distr)
+plot(weight904g.distr)
+```
+
+### Correlated model
+
+It is reasonable to think that some variables can be correlated. In
+order to verify that, we are going to create a model that takes in
+consideration random effects (variation according to respondents) and
+that the random parameters are correlated. First we consider correlation
+among all pair of variables and analyze the signals of the random
+coefficients.
+
+```{r Checking correlation, echo=FALSE, include=FALSE}
+lm2.mixed2 <- update(lm2.mixed, correlation = TRUE)
+```
+
+```{r echo=FALSE, include=FALSE}
+cov2cor(cov.mlogit(lm2.mixed2))
+summary(vcov(lm2.mixed2, what = "rpar", type = "cor"))
+```
+
+By analyzing the signs from random effect coefficients, we can update
+the model to contain just the variables that are correlated.
+
+```{r Random effect + Partial Correlated}
+lm2.mixed3 <- update(lm2.mixed2, correlation = c("price1499", "price1799", 
+          "price2099","shutter_speed60 - 1/12000 sec", "shutter_speed90 - 1/8000 sec",
+          "shutter_speed900 - 1/4000 sec","megapixels26", "megapixels33", "megapixels60", 
+          "max_resolution6240 x 4160","max_resolution7008 x 4672", "max_resolution9504 x 6336", 
+          "screensize2.6inch", "screensize3inch", "screensize3.2inch", "weight755g", 
+          "weight904g"))
+```
+
+### Choosing models part 2
+
+We need to compare the two new models with the previously chosen one
+(Fixed effect, no intercept) in order to choose which one to use. Same
+steps as the first choice of model.
+
+### Fixed effects vs. uncorrelated random effects
+
+```{r Fixed effects vs. uncorrelated random effects, echo=TRUE}
+lrtest(lm2, lm2.mixed) #Fixed effects vs. uncorrelated random effects
+```
+
+Here we are compare the multinomial model with fixed attributes and the
+model with uncorrelated random effects. The p-value is very low (\~ 0)
+which implies, we have enough sample evidence to reject the null
+hypothesis that variances with random effects are 0. That is random
+effects is significant in explaining consumer preferences. In this case,
+model that consider heterogeneity is found to be a better fit than the
+model that assume the homogeneity.
+
+### Random effects but Uncorrelated vs. Random effects + all correlated
+
+```{r Uncorrelated random effects vs. all correlated random effects, echo=TRUE}
+lrtest(lm2.mixed, lm2.mixed2) #Uncorrelated random effects vs. all correlated random effects
+```
+
+Since we established that models with random effects are better fit, now
+we can compare the model with uncorrelated random effects with the model
+with all correlated random effects. From the Likelihood ratio test, we
+get a low p-value which implies, the random effects are not independent.
+The preferences of certain levels are likely associated to preferences
+of other levels. So we can say that, model with correlated random
+effects is a better fit than uncorrelated one.
+
+### Random effects + all correlated vs. Random effects + Partially correlated
+
+```{r partially correlated random effects vs. all correlated random effects, echo=TRUE}
+lrtest(lm2.mixed2,lm2.mixed3) #partially correlated random effects vs. all correlated random effects
+```
+
+The lm2.mixed2 model with all correlated random effects whereas
+lm2.mixed3 is a restricted model with some of the correlated random
+effects. This test is to determine whether the restricted model is
+better fit than the model with larger model.
+
+We obtain a low p-value from the LR test which implies assessing
+consumer preferences using the model with all correlated random effects
+(larger model) is a better fit. So among all the models we have seen so
+far, lm2.mixed2 is the best model for assessing the consumer
+preferences.
+
+## Preference share prediction (Mixed MNL)
+
+Since we are using a new model, we can try to recalculate the preference
+in order to analyse if there is any variance.
+
+```{r Predict Function Correlated Random Effect, include=FALSE}
+predict.mixed.mnl <- function(model, data, nresp=1000) {
+  # Function for predicting shares from a mixed MNL model 
+  # model: mlogit object returned by mlogit()
+  # data: a data frame containing the set of designs for which you want to 
+  #       predict shares. Same format at the data used to estimate model. 
+  # Note that this code assumes all model parameters are random
+  data.model <- model.matrix(update(model$formula, 0 ~ .), data = data)[,-1]
+  coef.Sigma <- cov.mlogit(model)
+  coef.mu <- model$coef[1:dim(coef.Sigma)[1]]
+  draws <- mvrnorm(n=nresp, coef.mu, coef.Sigma)
+  shares <- matrix(NA, nrow=nresp, ncol=nrow(data))
+  for (i in 1:nresp) {
+    utility <- data.model%*%draws[i,]
+    share = exp(utility)/sum(exp(utility))
+    shares[i,] <- share
+  }
+  cbind(colMeans(shares), data)
+}
+```
+
+```{r predict no bootstrap, echo=FALSE}
+set.seed(1234)
+predict.mixed.mnl(lm2.mixed2, data=profiles)
+```
+
+## Proposed Product profile
+
+Here we are estimating the preference share of product profile with some
+proposed changes that can increase its acceptance rate. So our new
+reference profile will have an update in the shutter_speed from "60 -
+1/12000 sec" to "90 - 1/8000 sec", megapixels from 33 to 26 and
+max_resolution from "9504 x 6336" to "7008 x 4672". attributes.
+
+```{r}
+# ref <- ProductSelection(price = 1799, shutter_speed = "60 - 1/12000 sec", 
+# megapixels = 33, max_resolution = "9504 x 6336", screensize = "2.6inch", weight = "755g")
+
+proposed.profile <- ProductSelection(price = 1499, shutter_speed = "90 - 1/8000 sec", 
+                                     megapixels = 26, max_resolution = "7008 x 4672", 
+                                     screensize = "2.6inch", weight = "755g")
+profiles.new <- rbind(proposed.profile,entry1, entry2,entry3, entry4, mid1, mid3, 
+                      high1, high2, high3)
+set.seed(1234)
+predict.mixed.mnl(lm2.mixed2, data=profiles.new)
+
+```
+
+## Conclusion
+
+The attributes that presented properties of heterogeneity were \#
+"price1499", "price2099", "shutter_speed60 - 1/12000 sec",
+"shutter_speed90 - 1/8000 sec", "screensize3inch", "screensize3.2inch",
+"weight755g", "weight904g". The model chosen as the best representing
+our data was "Random effects + all correlated attributes"
+(lm2.mixed2).Also, the attributes that represents the biggest change in
+preference in relation to our selected profile were shutter_speed,
+megapixels, max_resolution.
+
+The insight that we get is user will prefer a lower price at a
+compromise on shutter_speed, megapixels and max_resolution. In this
+case, the preference share will change from \~*9%* to *21.49%*.
